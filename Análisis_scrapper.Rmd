@@ -1,0 +1,158 @@
+---
+title: "Scrapper"
+author: "José Gabriel Reyes Rodriguéz, Jesús Arencibia Falcón, Gerardo León Quintana"
+date: "2022-11-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+##Comenzamos abriendo nuestros csv en R.
+
+```{r}
+library(readr)
+hotel_information <- read_csv("C:/Users/gerar/OneDrive/Escritorio/ULPGC/Segundo/Marketing/Scraping/hotel_information.csv", 
+    col_types = cols(precio = col_number(), 
+        puntuación = col_number(), distancia_del_centro = col_number()))
+
+hotel_information_reviews <- read_csv("C:/Users/gerar/OneDrive/Escritorio/ULPGC/Segundo/Marketing/Scraping/hotel_information_reviews.csv")
+```
+
+##Introducimos una nueva columna en el dataframe llamada calificacion_distancia. En la cual clasificamos la cercanía del hotel entre cerca y lejos.
+
+```{r}
+distancia <- hotel_information[5]
+for(i in distancia){
+  distancia2 <- ifelse(i < 50.00, i*1000.00, i)
+}
+hotel_information[5] <- distancia2
+distancia3 <- hotel_information[5] 
+for(i in distancia3){
+  calificacion_distancia <- ifelse(i < 5000.00, "cerca", "lejos")
+}
+hotel_information <- cbind(hotel_information[, c(1:7)], calificacion_distancia)
+rm(distancia, distancia2, distancia3, i)
+```
+
+##Observamos la diferencia de medias.
+
+```{r}
+attach(hotel_information)
+shapiro.test(distancia_del_centro)
+anova <- aov(precio~calificacion_distancia, data = hotel_information) 
+summary(anova)
+# si F valor inferior a 5%, rechazamos hipotesis nula (diferencias significativas en las medias)
+anova2 <- aov(puntuación~calificacion_distancia, data = hotel_information) 
+summary(anova2)
+rm(calificacion_distancia)
+```
+
+##Ánalisis de frecuencias.
+
+```{r}
+library(fdth)
+attach(hotel_information)
+puntuaciones <- fdt(puntuación, breaks = "Sturges")
+#Donde
+#f= frecuencia absoluta
+#rf= frecuencia relativa
+#rf(%) frecuencia relativa porcentual
+#cf= frecuencia acumulada
+#cf(%)=frecuencia acumulada porcentual
+puntuaciones
+hist(puntuación, breaks = "Sturges", col = "coral1", main = "histograma utilizando el numero de clases según Sturge") #histograma utilizando el numero de clases según Sturge
+par(mfrow=c(2,1))
+plot(puntuaciones, type="cfh", col = "cadetblue2", main = "histograma de frecuencias acumulada")   
+plot(puntuaciones, type="cfp", main = "poligono de frecuencias acumulado", col = "darkgoldenrod1")  
+
+plot(puntuaciones, type="fh", col = "cadetblue2", main = "histograma de frecuencias ")
+plot(puntuaciones, type="fp", main = "poligono de frecuencias", col = "darkgoldenrod1")
+
+plot(puntuaciones, type="rfh", col = "cadetblue2", main = "histograma de frecuencias relativas")
+plot(puntuaciones, type="rfp", main = "poligono de frecuencias relativas", col = "darkgoldenrod1")
+
+plot(puntuaciones, type="rfph", col = "cadetblue2", main = "histograma de frecuencias relativas porcentual")
+plot(puntuaciones, type="rfpp", main = "poligono de frecuencias relativas porcentual", col = "darkgoldenrod1")
+par(mfrow=c(1,1))
+rm(puntuaciones)
+```
+
+##Ánalisis de regresión lineal
+
+```{r}
+attach(hotel_information)
+numeric_info <- hotel_information[c("puntuación", "precio", "distancia_del_centro")]
+#vemos posibles correlaciones para hacer las regresiones
+pairs.default(numeric_info, pch = 18, col = "steelblue")
+modelo <- lm(puntuación~precio+distancia_del_centro, data = hotel_information)
+#necesitamos verificar:
+#que los residuos mas o menos sigan una normal
+#la varianza de los residuos debe ser consistente para todas las observaciones
+
+hist (residuals(modelo), col = "purple")
+
+plot (fitted(modelo), residuals(modelo))
+abline (h = 0, lty = 2)
+
+summary(modelo)
+#como el valor del p-value de F es 0.000107 por lo que es estadisticamente significativo.
+#como podemos ver, la variable mas significativo es la del precio, la distancia del centro no influye en nada
+
+plot(puntuación~precio, data = hotel_information, pch = 21, col = "blue", bg = "red")
+abline(modelo, col = "green")
+rm(numeric_info)
+```
+
+##Creamos un dataframe únicamente con el total de valoraciones.
+
+```{r}
+library(dplyr)
+dt <- data.frame("nombre" = character(),
+                 "v_p" = integer(),
+                 "v_n" = integer())
+for(x in hotel_information$nombre){
+  datap <- filter(hotel_information_reviews, nombre_del_hotel == x)
+  counter_pos = 0
+  counter_neg = 0
+  for(e in datap$valoracion_positiva){
+    if(is.na(e) == FALSE) {
+      counter_pos = counter_pos + 1
+    }
+  }
+  for(i in datap$valoracion_negativa){
+    if(is.na(i) == FALSE) {
+      counter_neg = counter_neg +1
+    }
+  }
+  dt <- bind_rows(dt, data.frame("nombre" = x, "v_p" = counter_pos, "v_n" = counter_neg))
+}
+rm(e, i , x, counter_neg, counter_pos, datap)
+```
+
+##Realizamos análisis a partir de los comentarios.
+
+```{r}
+library(dplyr)
+for(x in dt$nombre){
+  datap <- filter(dt, nombre == x)
+  y <- datap$v_p
+  z <- datap$v_n
+  if(y != 0 && z != 0) {
+    values <- c(y, z)
+  etiqueta <- paste0(round(100 * values/sum(values), 2), "%")
+  pie(values, labels = etiqueta, col = rainbow(length(values)), main = x)
+  legend("bottomleft", legend = c("Valoraciones positivas", "Valoraciones negativas"),
+         cex = 0.7, fill = rainbow(length(values)))
+  }
+}
+rm(x, y,z,values, etiqueta, datap)
+```
+
+
+
+
+
+
